@@ -36,7 +36,7 @@ def run_vlm_prototype(image_path: str):
     # 2. Define Test Prompts
     # Assume the test image isa car
     prompts = {
-        "normal": "car parked safely outdoors",
+        "normal": "Dog walking peacfully",
         "anomaly": "A heavily damaged car after a crash." 
     }
 
