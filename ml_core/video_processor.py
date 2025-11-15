@@ -13,8 +13,6 @@ def get_vlm_preprocessor():
     """Loads the VLM image preprocessor only once for efficiency."""
     global _PREPROCESS
     if _PREPROCESS is None:
-        # We only need the preprocessor transform here
-        # Note: We use the same model config proven in vlm_test.py
         _, _, _PREPROCESS = open_clip.create_model_and_transforms(
             _MODEL_NAME, 
             pretrained=_PRETRAINED_WEIGHTS
@@ -25,7 +23,7 @@ def extract_sampled_frames(video_path: str, sampling_rate_fps: int = 1) -> tuple
     """
     Loads a video, extracts frames at a low sampling rate (temporal segmentation),
     and preprocesses them into VLM-ready PyTorch Tensors.
-    
+
     Returns: (list of PyTorch Tensors, list of timestamps in seconds)
     """
     preprocess = get_vlm_preprocessor()
@@ -33,41 +31,32 @@ def extract_sampled_frames(video_path: str, sampling_rate_fps: int = 1) -> tuple
     
     if not cap.isOpened():
         print(f"Error: Cannot open video file at {video_path}")
-        return,
+        return [], []
 
-    # 1. Determine Sampling Interval (The Efficiency Hack)
-    fps = cap.get(cv2.CAP_PROP_FPS) # Source video FPS (e.g., 30.0)
+    fps = cap.get(cv2.CAP_PROP_FPS)
     if fps == 0:
-        print("Warning: Could not read video FPS. Assuming 30 FPS for calculation.")
+        print("Warning: Could not read video FPS. Assuming 30 FPS.")
         fps = 30.0
 
-    # Calculate how many frames to skip (e.g., 30 FPS / 1 FPS = skip 30 frames)
-    frame_skip_interval = max(1, int(round(fps / sampling_rate_fps))) 
-    
+    frame_skip_interval = max(1, int(round(fps / sampling_rate_fps)))
+
     frame_count = 0
-    sampled_tensors =
-    timestamps =
+    sampled_tensors = []
+    timestamps = []
 
     while cap.isOpened():
-        ret, frame = cap.read() # frame is a BGR NumPy array
-        
+        ret, frame = cap.read()
         if not ret:
             break 
-        
+
         if frame_count % frame_skip_interval == 0:
-            # 2. Frame Preprocessing and Conversion
-            
-            # Convert OpenCV BGR to VLM-compatible PIL RGB format
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(rgb_frame)
-            
-            # Apply VLM transformations (scaling, normalization, to_tensor)
+
             processed_tensor = preprocess(pil_image)
-            
-            # Append the VLM-ready tensor
+
             sampled_tensors.append(processed_tensor)
-            
-            # Calculate the precise timestamp (critical for Phase 3 deliverable)
+
             current_time_s = frame_count / fps
             timestamps.append(current_time_s)
             
@@ -75,6 +64,6 @@ def extract_sampled_frames(video_path: str, sampling_rate_fps: int = 1) -> tuple
         
     cap.release()
     print(f"Source FPS: {fps:.2f}. Sampled frames: {len(sampled_tensors)}")
-    print(f"Processing load reduced by a factor of {frame_skip_interval}.")
-    
+    print(f"Processing load reduced by factor {frame_skip_interval}.")
+
     return sampled_tensors, timestamps
