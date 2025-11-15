@@ -34,10 +34,10 @@ def run_vlm_prototype(image_path: str):
     tokenizer = open_clip.get_tokenizer(MODEL_NAME)
 
     # 2. Define Test Prompts
-    # Assume the test image is a picture of a dog walking in a park
+    # Assume the test image isa car
     prompts = {
-        "normal": "A dog walking peacefully in the park.",
-        "anomaly": "A violent car crash." 
+        "normal": "car parked safely outdoors",
+        "anomaly": "A heavily damaged car after a crash." 
     }
 
     # 3. Process Image and Text
