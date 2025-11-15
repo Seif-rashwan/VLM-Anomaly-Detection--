@@ -1,44 +1,47 @@
 import cv2
 import torch
 import numpy as np
+from PIL import Image
 import open_clip
 
-# Global variable to load the preprocessor once (efficiency)
-# In Phase 3, this will be handled by the ml_api_handler
+# --- Utility to load VLM preprocessor only once ---
 _PREPROCESS = None 
+_MODEL_NAME = "ViT-B-16"
+_PRETRAINED_WEIGHTS = "laion2b_s34b_b88k"
 
-def get_vlm_preprocessor(model_name: str = "ViT-B-16", pretrained: str = "laion2b_s34b_b88k"):
-    """Loads the VLM image preprocessor only once."""
+def get_vlm_preprocessor():
+    """Loads the VLM image preprocessor only once for efficiency."""
     global _PREPROCESS
     if _PREPROCESS is None:
         # We only need the preprocessor transform here
+        # Note: We use the same model config proven in vlm_test.py
         _, _, _PREPROCESS = open_clip.create_model_and_transforms(
-            model_name, 
-            pretrained=pretrained
+            _MODEL_NAME, 
+            pretrained=_PRETRAINED_WEIGHTS
         )
     return _PREPROCESS
 
-def extract_sampled_frames(video_path: str, sampling_rate_fps: int = 1) -> list:
+def extract_sampled_frames(video_path: str, sampling_rate_fps: int = 1) -> tuple:
     """
     Loads a video, extracts frames at a low sampling rate (temporal segmentation),
-    and preprocesses them for VLM input.
-
-    Returns a list of VLM-ready PyTorch Tensors.
+    and preprocesses them into VLM-ready PyTorch Tensors.
+    
+    Returns: (list of PyTorch Tensors, list of timestamps in seconds)
     """
     preprocess = get_vlm_preprocessor()
     cap = cv2.VideoCapture(video_path)
     
     if not cap.isOpened():
         print(f"Error: Cannot open video file at {video_path}")
-        return
+        return,
 
     # 1. Determine Sampling Interval (The Efficiency Hack)
     fps = cap.get(cv2.CAP_PROP_FPS) # Source video FPS (e.g., 30.0)
     if fps == 0:
-        print("Warning: Could not read video FPS. Assuming 30 FPS.")
+        print("Warning: Could not read video FPS. Assuming 30 FPS for calculation.")
         fps = 30.0
 
-    # frame_skip_interval: E.g., if fps=30 and we want 1 FPS, skip 30 frames.
+    # Calculate how many frames to skip (e.g., 30 FPS / 1 FPS = skip 30 frames)
     frame_skip_interval = max(1, int(round(fps / sampling_rate_fps))) 
     
     frame_count = 0
@@ -46,7 +49,7 @@ def extract_sampled_frames(video_path: str, sampling_rate_fps: int = 1) -> list:
     timestamps =
 
     while cap.isOpened():
-        ret, frame = cap.read() # ret=success flag, frame=image (BGR numpy array)
+        ret, frame = cap.read() # frame is a BGR NumPy array
         
         if not ret:
             break 
@@ -54,24 +57,24 @@ def extract_sampled_frames(video_path: str, sampling_rate_fps: int = 1) -> list:
         if frame_count % frame_skip_interval == 0:
             # 2. Frame Preprocessing and Conversion
             
-            # Convert OpenCV BGR (Blue-Green-Red) format to PIL RGB (Required by VLM preprocessor)
+            # Convert OpenCV BGR to VLM-compatible PIL RGB format
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
-            # Convert NumPy array to PIL Image and apply VLM transformations (scaling, normalization)
             pil_image = Image.fromarray(rgb_frame)
+            
+            # Apply VLM transformations (scaling, normalization, to_tensor)
             processed_tensor = preprocess(pil_image)
             
             # Append the VLM-ready tensor
             sampled_tensors.append(processed_tensor)
             
-            # Calculate and store the timestamp (in seconds) for this segment
+            # Calculate the precise timestamp (critical for Phase 3 deliverable)
             current_time_s = frame_count / fps
             timestamps.append(current_time_s)
             
         frame_count += 1
         
     cap.release()
-    print(f"Source FPS: {fps:.2f}. Target Sampling Rate: {sampling_rate_fps} FPS.")
-    print(f"Total frames processed: {frame_count}. Sampled tensors created: {len(sampled_tensors)}")
+    print(f"Source FPS: {fps:.2f}. Sampled frames: {len(sampled_tensors)}")
+    print(f"Processing load reduced by a factor of {frame_skip_interval}.")
     
     return sampled_tensors, timestamps
