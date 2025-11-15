@@ -1,1 +1,7 @@
-
+streamlit
+torch
+transformers
+numpy
+opencv-python
+Pillow
+open_clip
