@@ -4,4 +4,4 @@ transformers
 numpy
 opencv-python
 Pillow
-open_clip
+open-clip-torch
