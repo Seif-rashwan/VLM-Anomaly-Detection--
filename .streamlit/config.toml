@@ -1,0 +1,8 @@
+[logger]
+# Reduce log level to suppress PyTorch file watcher warnings
+level = "warning"
+
+[server]
+# Enable file watching but suppress noisy warnings
+runOnSave = true
+
