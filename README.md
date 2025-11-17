@@ -145,7 +145,7 @@ sequenceDiagram
 ### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/VLM-Anomaly-Detection--.git
+git clone https://github.com/Seif-rashwan/VLM-Anomaly-Detection--.git
 cd VLM-Anomaly-Detection--
 ```
 
@@ -174,7 +174,7 @@ pip install -r requirements.txt
 python -c "import torch; import open_clip; print('Installation successful!')"
 ```
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Image Analysis
 
@@ -204,7 +204,7 @@ python -c "import torch; import open_clip; print('Installation successful!')"
    - Click " Start Anomaly Analysis"
    - View time-series chart and anomaly detection results
 
-## 📖 Usage
+##  Usage
 
 ### Programmatic API
 
@@ -299,7 +299,7 @@ VLM-Anomaly-Detection--/
 └── TESTING_GUIDE.md             # Testing instructions
 ```
 
-## 📚 API Documentation
+##  API Documentation
 
 ### Core Functions
 
@@ -441,33 +441,6 @@ runOnSave = true
 3. **Model Caching**: Model is cached after first load
 4. **Batch Processing**: Process multiple images/videos programmatically
 
-##  Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-### Development Setup
-
-```bash
-# Clone your fork
-git clone https://github.com/yourusername/VLM-Anomaly-Detection--.git
-cd VLM-Anomaly-Detection--
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
-
-# Install development dependencies
-pip install -r requirements.txt
-
-# Make your changes and test
-streamlit run ui/app.py
-```
 
 ##  License
 
