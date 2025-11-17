@@ -34,15 +34,15 @@ streamlit run ui/app.py
 1. Upload `data/test_image.jpg` (or any image)
 2. Enter normal prompt: "Dog walking peacefully"
 3. Enter anomaly prompt: "A heavily damaged car after a crash."
-4. Click "🚨 Start Analysis"
+4. Click " Start Analysis"
 5. Verify similarity scores are displayed
 6. Verify classification (NORMAL or ANOMALY) is shown
 
 **Expected Results:**
-- ✅ Image displays correctly
-- ✅ Similarity scores appear (two metrics)
-- ✅ Classification result shown
-- ✅ Detailed results expander works
+-  Image displays correctly
+-  Similarity scores appear (two metrics)
+-  Classification result shown
+-  Detailed results expander works
 
 ## Phase 2 Testing: Video Processing
 
@@ -64,10 +64,10 @@ print(f"Metadata: {results['metadata']}")
 ```
 
 **Expected Results:**
-- ✅ Video loads successfully
-- ✅ Frames are processed
-- ✅ Returns list of anomaly scores over time
-- ✅ Metadata includes total_frames, total_seconds, max_anomaly_score, etc.
+-  Video loads successfully
+-  Frames are processed
+-  Returns list of anomaly scores over time
+-  Metadata includes total_frames, total_seconds, max_anomaly_score, etc.
 
 ### Test 4: Anomaly Scoring Algorithm
 ```python
@@ -82,9 +82,9 @@ print(f"Anomaly scores: {scores}")
 ```
 
 **Expected Results:**
-- ✅ Scores normalized to [0, 1] range
-- ✅ Higher anomaly similarity = higher score
-- ✅ Lower normal similarity = higher score
+-  Scores normalized to [0, 1] range
+-  Higher anomaly similarity = higher score
+-  Lower normal similarity = higher score
 
 ## Phase 3 Testing: Integrated System
 
@@ -98,17 +98,17 @@ streamlit run ui/app_video.py
 2. Enter normal prompt: "A person is walking normally."
 3. Enter anomaly prompt: "A person is falling down."
 4. Set sampling rate: 1.0 fps (default)
-5. Click "🚨 Start Anomaly Analysis"
+5. Click " Start Anomaly Analysis"
 
 **Expected Results:**
-- ✅ Video preview displays
-- ✅ Progress bar shows during processing
-- ✅ Analysis completes successfully
-- ✅ **Prominent message**: "🚨 Anomaly detected at MM:SS" (if score > 0.5)
-- ✅ Summary metrics displayed (4 columns)
-- ✅ **Line chart** showing anomaly score over time
-- ✅ Raw data table available in expander
-- ✅ Detailed results expander works
+-  Video preview displays
+-  Progress bar shows during processing
+-  Analysis completes successfully
+-  **Prominent message**: " Anomaly detected at MM:SS" (if score > 0.5)
+-  Summary metrics displayed (4 columns)
+-  **Line chart** showing anomaly score over time
+-  Raw data table available in expander
+-  Detailed results expander works
 
 ### Test 6: Results Visualization Verification
 
@@ -157,9 +157,9 @@ from PIL import Image
 try:
     img = Image.open("data/test_image.jpg")
     result = analyze_image_vlm(img, "normal", "anomaly")
-    print(f"✅ Image analysis: {result}")
+    print(f" Image analysis: {result}")
 except Exception as e:
-    print(f"❌ Image analysis failed: {e}")
+    print(f" Image analysis failed: {e}")
 
 # Test 2: Video Analysis
 from ml_core.video_analyzer import analyze_video
@@ -171,19 +171,19 @@ try:
         "anomaly event",
         sampling_rate_fps=1.0
     )
-    print(f"✅ Video analysis status: {result['status']}")
-    print(f"✅ Data points: {len(result.get('data', []))}")
+    print(f" Video analysis status: {result['status']}")
+    print(f" Data points: {len(result.get('data', []))}")
 except Exception as e:
-    print(f"❌ Video analysis failed: {e}")
+    print(f" Video analysis failed: {e}")
 
 # Test 3: Anomaly Scoring
 from ml_core.anomaly_scorer import compute_anomaly_scores
 
 try:
     scores = compute_anomaly_scores([0.8, 0.7], [0.2, 0.3])
-    print(f"✅ Anomaly scoring: {scores}")
+    print(f" Anomaly scoring: {scores}")
 except Exception as e:
-    print(f"❌ Anomaly scoring failed: {e}")
+    print(f" Anomaly scoring failed: {e}")
 
 print("\nAll core components tested!")
 ```
@@ -216,12 +216,12 @@ Expected processing times (approximate):
 ## Success Criteria
 
 All tests should pass with:
-- ✅ No errors in console
-- ✅ All UI elements display correctly
-- ✅ Results are accurate and meaningful
-- ✅ Performance is acceptable (< 2 min for 1-minute video)
+-  No errors in console
+-  All UI elements display correctly
+-  Results are accurate and meaningful
+-  Performance is acceptable (< 2 min for 1-minute video)
 
 ---
 
-**Status**: Ready for comprehensive testing! 🚀
+**Status**: Ready for comprehensive testing! 
 
