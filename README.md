@@ -1,4 +1,4 @@
-# 🔍 VLM-Powered Zero-Shot Anomaly Detection
+# VLM-Powered Zero-Shot Anomaly Detection
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -22,7 +22,7 @@
 - [Contributing](#-contributing)
 - [License](#-license)
 
-## 🎯 Overview
+##  Overview
 
 This project implements a zero-shot anomaly detection system leveraging Vision-Language Models (VLMs) to identify anomalous events in images and videos without requiring training data. The system uses OpenAI's CLIP model to compute semantic similarity between visual content and natural language descriptions of normal and anomalous conditions.
 
@@ -34,29 +34,29 @@ This project implements a zero-shot anomaly detection system leveraging Vision-L
 - **Interactive UI**: Streamlit-based web interface for easy interaction
 - **Flexible Configuration**: Adjustable sampling rates and customizable prompts
 
-## ✨ Features
+##  Features
 
 ### Image Analysis
-- ✅ Single-image anomaly detection
-- ✅ Real-time similarity scoring
-- ✅ Binary classification (Normal/Anomaly)
-- ✅ Detailed similarity metrics
+-  Single-image anomaly detection
+-  Real-time similarity scoring
+-  Binary classification (Normal/Anomaly)
+-  Detailed similarity metrics
 
 ### Video Analysis
-- ✅ Frame-by-frame processing with configurable sampling
-- ✅ Time-series anomaly score visualization
-- ✅ Automatic peak anomaly detection
-- ✅ Comprehensive metadata and statistics
-- ✅ Interactive line charts and data tables
+-  Frame-by-frame processing with configurable sampling
+-  Time-series anomaly score visualization
+-  Automatic peak anomaly detection
+-  Comprehensive metadata and statistics
+-  Interactive line charts and data tables
 
 ### Technical Features
-- ✅ Model caching for improved performance
-- ✅ GPU acceleration support (CUDA)
-- ✅ Multiple video format support (MP4, MOV, AVI, MKV, WebM)
-- ✅ Error handling and validation
-- ✅ Progress tracking and status updates
+-  Model caching for improved performance
+-  GPU acceleration support (CUDA)
+-  Multiple video format support (MP4, MOV, AVI, MKV, WebM)
+-  Error handling and validation
+-  Progress tracking and status updates
 
-## 🏗️ Architecture
+##  Architecture
 
 ### System Architecture
 
@@ -134,7 +134,7 @@ sequenceDiagram
            └──────────────────────┘
 ```
 
-## 📦 Installation
+## Installation
 
 ### Prerequisites
 
@@ -145,7 +145,7 @@ sequenceDiagram
 ### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/VLM-Anomaly-Detection--.git
+git clone https://github.com/Seif-rashwan/VLM-Anomaly-Detection--.git
 cd VLM-Anomaly-Detection--
 ```
 
@@ -174,7 +174,7 @@ pip install -r requirements.txt
 python -c "import torch; import open_clip; print('Installation successful!')"
 ```
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Image Analysis
 
@@ -187,7 +187,7 @@ python -c "import torch; import open_clip; print('Installation successful!')"
    - Upload an image file
    - Enter normal condition prompt (e.g., "Dog walking peacefully")
    - Enter anomaly condition prompt (e.g., "A heavily damaged car after a crash")
-   - Click "🚨 Start Analysis"
+   - Click " Start Analysis"
    - View similarity scores and classification
 
 ### Video Analysis
@@ -201,10 +201,10 @@ python -c "import torch; import open_clip; print('Installation successful!')"
    - Upload a video file (MP4, MOV, AVI, etc.)
    - Enter normal and anomaly prompts
    - Adjust sampling rate (frames per second)
-   - Click "🚨 Start Anomaly Analysis"
+   - Click " Start Anomaly Analysis"
    - View time-series chart and anomaly detection results
 
-## 📖 Usage
+##  Usage
 
 ### Programmatic API
 
@@ -264,7 +264,7 @@ python ml_core/vlm_test.py
 # Similarity to 'A heavily damaged car after a crash.': 0.0408
 ```
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 VLM-Anomaly-Detection--/
@@ -299,7 +299,7 @@ VLM-Anomaly-Detection--/
 └── TESTING_GUIDE.md             # Testing instructions
 ```
 
-## 📚 API Documentation
+##  API Documentation
 
 ### Core Functions
 
@@ -377,7 +377,7 @@ Converts similarity scores to normalized anomaly scores [0, 1].
 **Returns:**
 - `List[float]`: Normalized anomaly scores in [0, 1] range
 
-## 🧪 Testing
+##  Testing
 
 ### Running Tests
 
@@ -395,14 +395,14 @@ python -c "from ml_core.video_analyzer import analyze_video; \
 
 ### Test Coverage
 
-- ✅ Image analysis functionality
-- ✅ Video frame extraction
-- ✅ Anomaly scoring algorithm
-- ✅ UI components
-- ✅ Error handling
-- ✅ Edge cases
+-  Image analysis functionality
+-  Video frame extraction
+-  Anomaly scoring algorithm
+-  UI components
+-  Error handling
+-  Edge cases
 
-## 🔧 Configuration
+##  Configuration
 
 ### Model Configuration
 
@@ -425,7 +425,7 @@ level = "warning"
 runOnSave = true
 ```
 
-## 🚧 Performance Considerations
+##  Performance Considerations
 
 ### Processing Speed
 
@@ -441,60 +441,17 @@ runOnSave = true
 3. **Model Caching**: Model is cached after first load
 4. **Batch Processing**: Process multiple images/videos programmatically
 
-## 🤝 Contributing
 
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-### Development Setup
-
-```bash
-# Clone your fork
-git clone https://github.com/yourusername/VLM-Anomaly-Detection--.git
-cd VLM-Anomaly-Detection--
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
-
-# Install development dependencies
-pip install -r requirements.txt
-
-# Make your changes and test
-streamlit run ui/app.py
-```
-
-## 📄 License
+##  License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+##  Acknowledgments
 
 - [OpenAI CLIP](https://github.com/openai/CLIP) - Vision-Language Model
 - [Open CLIP](https://github.com/mlfoundations/open_clip) - Open-source CLIP implementation
 - [Streamlit](https://streamlit.io/) - Web application framework
 - [PyTorch](https://pytorch.org/) - Deep learning framework
 
-## 📞 Support
 
-For issues, questions, or contributions:
-- Open an issue on [GitHub Issues](https://github.com/yourusername/VLM-Anomaly-Detection--/issues)
-- Check [TESTING_GUIDE.md](TESTING_GUIDE.md) for troubleshooting
-- Review [PROJECT_STATUS.md](PROJECT_STATUS.md) for project status
 
-## 📊 Project Status
-
-✅ **All deliverables complete** - See [PROJECT_STATUS.md](PROJECT_STATUS.md) for detailed status.
-
-- ✅ Phase 1: Initial Prototypes
-- ✅ Phase 2: Parallel Feature Development
-- ✅ Phase 3: System Integration & Testing
-
----
-
-**Made with ❤️ using CLIP and Streamlit**
