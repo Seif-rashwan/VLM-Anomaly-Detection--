@@ -517,25 +517,6 @@ runOnSave = true
 6. **Batch Processing**: Process multiple images/videos programmatically for efficiency
 
 
-##  Recent Updates
-
-### Version 2.0 - Dual-Mode Video Analysis
-
-**New Features:**
-- ✨ **Live Camera Feed**: Real-time anomaly detection from webcam with continuous monitoring
-- 🎯 **Dual Input Modes**: Unified interface supporting both video file upload and live camera streaming
-- 📊 **Side-by-Side Layout**: Live camera feed displayed alongside real-time results for easy tracking
-- ⚡ **Performance Optimizations**: 
-  - Frame buffer optimization for reduced latency
-  - UI update throttling for smoother experience
-  - Optimized frame skipping to always show latest frame
-- 🔄 **Rolling Window Analysis**: Maintains last 60 scored frames for trend visualization
-
-**Technical Improvements:**
-- Refactored `app.py` to support dual-mode interface
-- New `analyze_realtime_stream()` function for live camera processing
-- Enhanced UI with real-time metrics and status updates
-- Improved error handling and camera connection management
 
 ##  License
 
