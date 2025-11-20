@@ -41,6 +41,10 @@ def analyze_realtime_stream(
     if not cap.isOpened():
         st.error("❌ Unable to access the selected camera.")
         return
+    
+    # Optimize camera settings for lower latency
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce buffer to minimize delay
+    cap.set(cv2.CAP_PROP_FPS, 30)  # Set reasonable FPS
 
     try:
         model, tokenizer, preprocess, device = get_model()
@@ -71,17 +75,34 @@ def analyze_realtime_stream(
 
         sampling_interval = 1.0 / max(0.1, sampling_rate_fps)
         last_sample_time = 0.0
+        last_ui_update = 0.0
+        ui_update_interval = 0.5  # Update UI every 0.5 seconds to reduce overhead
         stream_start = time.time()
 
         with col_results:
             status_placeholder.info("📡 Live monitoring started. Press the stop button to end the stream.")
 
         while True:
+            # Check if stream should stop
+            if not st.session_state.get("live_stream_requested", False):
+                with col_results:
+                    status_placeholder.info("⏹️ Live monitoring stopped.")
+                break
+
+            # Read frame and skip buffered frames to get the latest (reduces latency)
             ret, frame = cap.read()
             if not ret:
                 with col_results:
                     status_placeholder.error("⚠️ Lost connection to the camera.")
                 break
+            
+            # Skip a few buffered frames to get the most recent frame
+            for _ in range(2):
+                ret_new, frame_new = cap.read()
+                if ret_new:
+                    ret, frame = ret_new, frame_new
+                else:
+                    break
 
             # Always display the camera feed (even if not analyzing this frame)
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -89,12 +110,16 @@ def analyze_realtime_stream(
                 frame_placeholder.image(rgb_frame, caption="Live Feed", use_container_width=True)
 
             now = time.time()
+            
+            # Only process frame if sampling interval has passed
             if now - last_sample_time < sampling_interval:
+                time.sleep(0.01)  # Small sleep to prevent CPU spinning
                 continue
 
             last_sample_time = now
             pil_image = Image.fromarray(rgb_frame)
 
+            # Process frame with model (this is the expensive operation)
             image_input = preprocess(pil_image).unsqueeze(0).to(device)
 
             with torch.no_grad():
@@ -110,32 +135,41 @@ def analyze_realtime_stream(
             if len(normal_scores) == 0:
                 continue
 
+            # Compute scores
             rolling_anomaly_scores = compute_anomaly_scores(
                 list(normal_scores), list(anomaly_scores)
             )
             latest_score = rolling_anomaly_scores[-1]
 
-            df = pd.DataFrame(
-                {
-                    "time_s": list(timestamps),
-                    "score": rolling_anomaly_scores,
-                }
-            )
-
-            # Update results in right column
-            with col_results:
-                chart = (
-                    alt.Chart(df)
-                    .mark_line(color="#FF4B4B")
-                    .encode(
-                        x=alt.X("time_s", title="Time (s)"),
-                        y=alt.Y("score", scale=alt.Scale(domain=[0, 1]), title="Anomaly Score"),
-                    )
+            # Only update heavy UI elements (chart/table) periodically to reduce lag
+            if now - last_ui_update >= ui_update_interval or len(normal_scores) == 1:
+                last_ui_update = now
+                
+                df = pd.DataFrame(
+                    {
+                        "time_s": list(timestamps),
+                        "score": rolling_anomaly_scores,
+                    }
                 )
-                threshold_line = alt.Chart(pd.DataFrame({"score": [0.5]})).mark_rule(color="orange").encode(y="score")
 
-                chart_placeholder.altair_chart(chart + threshold_line, use_container_width=True)
+                # Update results in right column
+                with col_results:
+                    chart = (
+                        alt.Chart(df)
+                        .mark_line(color="#FF4B4B")
+                        .encode(
+                            x=alt.X("time_s", title="Time (s)"),
+                            y=alt.Y("score", scale=alt.Scale(domain=[0, 1]), title="Anomaly Score"),
+                        )
+                    )
+                    threshold_line = alt.Chart(pd.DataFrame({"score": [0.5]})).mark_rule(color="orange").encode(y="score")
 
+                    chart_placeholder.altair_chart(chart + threshold_line, use_container_width=True)
+
+                    table_placeholder.dataframe(df, use_container_width=True, height=250)
+
+            # Always update metrics and status (lightweight)
+            with col_results:
                 delta = latest_score - 0.5
                 metrics_placeholder.metric(
                     label="Latest Anomaly Score",
@@ -147,13 +181,6 @@ def analyze_realtime_stream(
                     "🚨 Anomalous pattern detected." if latest_score > 0.5 else "✅ Scene is within normal range."
                 )
                 status_placeholder.markdown(state_message)
-
-                table_placeholder.dataframe(df, use_container_width=True, height=250)
-
-            if not st.session_state.get("live_stream_requested", False):
-                with col_results:
-                    status_placeholder.info("⏹️ Live monitoring stopped.")
-                break
 
     finally:
         cap.release()
