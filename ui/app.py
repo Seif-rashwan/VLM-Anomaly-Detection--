@@ -13,6 +13,61 @@ from PIL import Image
 # Add parent directory to path to import ml_core
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+AUDIO_KEYWORDS = [
+    "audio",
+    "sound",
+    "noise",
+    "loud",
+    "quiet",
+    "silence",
+    "silent",
+    "shout",
+    "shouting",
+    "scream",
+    "screaming",
+    "music",
+    "mic",
+    "microphone",
+    "speaking",
+    "speech",
+    "voice",
+    "voices",
+]
+
+
+def prompt_mentions_audio(prompt: str) -> bool:
+    """Return True if the prompt references audio-based cues."""
+    if not prompt:
+        return False
+
+    normalized = prompt.lower()
+    return any(keyword in normalized for keyword in AUDIO_KEYWORDS)
+
+
+def guard_audio_prompts(prompt_normal: str, prompt_anomaly: str) -> bool:
+    """
+    Warn the user if they describe purely audio cues (unsupported).
+    Returns True when audio terms are detected so callers can abort processing.
+    """
+    flagged_prompts = []
+
+    if prompt_mentions_audio(prompt_normal):
+        flagged_prompts.append("Normal Activity Prompt")
+    if prompt_mentions_audio(prompt_anomaly):
+        flagged_prompts.append("Anomalous Event Prompt")
+
+    if not flagged_prompts:
+        return False
+
+    st.error(
+        "🔇 Audio-based cues are not supported. Please describe **visual** events only "
+        f"(check: {', '.join(flagged_prompts)})."
+    )
+    st.caption(
+        "Tip: Rephrase prompts to reference what the camera can see (e.g., gestures, actions, objects)."
+    )
+    return True
+
 # Lazily import heavy modules/functions when needed
 def get_analyze_video_function():
     """Lazy import of the offline video analysis function."""
@@ -211,6 +266,9 @@ def render_video_upload_mode(
         st.error("⚠️ Please provide both normal and anomaly prompts.")
         return
 
+    if guard_audio_prompts(prompt_normal, prompt_anomaly):
+        return
+
     progress_bar = st.progress(0)
     status_text = st.empty()
 
@@ -362,7 +420,8 @@ def main():
             stop_live = st.button("⏹️ Stop Live Monitoring")
 
             if start_live:
-                st.session_state["live_stream_requested"] = True
+                if not guard_audio_prompts(prompt_normal, prompt_anomaly):
+                    st.session_state["live_stream_requested"] = True
             if stop_live:
                 st.session_state["live_stream_requested"] = False
 
