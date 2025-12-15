@@ -1,44 +1,32 @@
 import numpy as np
-from typing import List, Dict, Tuple
+from typing import List, Dict
+from ml_core.config import DEFAULT_SIGMOID_BIAS, DEFAULT_SIGMOID_TEMP, ANOMALY_THRESHOLD
 
 def compute_anomaly_scores(
     normal_similarities: List[float],
-    anomaly_similarities: List[float]
+    anomaly_similarities: List[float],
+    temperature: float = DEFAULT_SIGMOID_TEMP,
+    bias: float = DEFAULT_SIGMOID_BIAS
 ) -> List[float]:
     """
-    Computes anomaly scores from normal and anomaly similarity scores.
+    Computes anomaly scores using a biased sigmoid function.
     
-    The anomaly score is calculated as:
-    - Higher anomaly similarity = higher anomaly score
-    - Lower normal similarity = higher anomaly score
-    - Score is normalized to [0, 1] range
-    
-    Args:
-        normal_similarities: List of similarity scores to normal prompt
-        anomaly_similarities: List of similarity scores to anomaly prompt
-    
-    Returns:
-        List of anomaly scores in [0, 1] range
+    Includes safety clipping and configurable sensitivity.
     """
     normal_sims = np.array(normal_similarities)
     anomaly_sims = np.array(anomaly_similarities)
     
-    # Calculate raw anomaly score
-    # When anomaly similarity is high and normal similarity is low, score should be high
-    # We use the difference and normalize
+    # 1. Calculate raw difference
     raw_scores = anomaly_sims - normal_sims
     
-    # Normalize to [0, 1] range
-    # CLIP similarities are typically in [-1, 1] range, so differences are in [-2, 2]
-    # We shift and scale to [0, 1]
-    min_score = raw_scores.min()
-    max_score = raw_scores.max()
+    # 2. SAFETY: Clip extreme values to prevent overflow/underflow
+    # CLIP similarity is usually within [-1, 1], so differences are [-2, 2].
+    # We clip to [-2.0, 2.0] just to be safe mathematically.
+    raw_scores = np.clip(raw_scores, -2.0, 2.0)
     
-    if max_score - min_score > 0:
-        normalized_scores = (raw_scores - min_score) / (max_score - min_score)
-    else:
-        # If all scores are the same, return 0.5 (neutral)
-        normalized_scores = np.full_like(raw_scores, 0.5)
+    # 3. Apply Biased Sigmoid
+    # Formula: 1 / (1 + e^(-(x - bias) / temp))
+    normalized_scores = 1 / (1 + np.exp(-(raw_scores - bias) / temperature))
     
     return normalized_scores.tolist()
 
@@ -50,19 +38,25 @@ def compute_metadata(
 ) -> Dict:
     """
     Computes metadata from anomaly scores.
-    
-    Args:
-        anomaly_scores: List of anomaly scores
-        timestamps: List of timestamps corresponding to scores
-        total_frames: Total number of frames processed
-        total_seconds: Total duration of video in seconds
-    
-    Returns:
-        Dictionary with metadata including max score, peak time, average, etc.
     """
     scores_array = np.array(anomaly_scores)
     timestamps_array = np.array(timestamps)
     
+    # SAFETY: Early exit for empty data
+    if len(scores_array) == 0:
+        return {
+            "total_frames": 0,
+            "total_seconds": 0,
+            "max_anomaly_score": 0.0,
+            "max_anomaly_time": 0.0,
+            "average_score": 0.0,
+            "min_score": 0.0,
+            "max_score": 0.0,
+            "std_score": 0.0,
+            "anomaly_threshold": ANOMALY_THRESHOLD,
+            "is_anomaly_detected": False
+        }
+
     max_score_idx = np.argmax(scores_array)
     max_score = float(scores_array[max_score_idx])
     max_anomaly_time = float(timestamps_array[max_score_idx])
@@ -76,5 +70,8 @@ def compute_metadata(
         "average_score": average_score,
         "min_score": float(np.min(scores_array)),
         "max_score": float(np.max(scores_array)),
-        "std_score": float(np.std(scores_array))
+        "std_score": float(np.std(scores_array)),
+        # Standardize the threshold decision here
+        "anomaly_threshold": ANOMALY_THRESHOLD,
+        "is_anomaly_detected": max_score >= ANOMALY_THRESHOLD
     }

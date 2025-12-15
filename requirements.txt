@@ -5,3 +5,6 @@ numpy
 opencv-python
 Pillow
 open-clip-torch
+google-generativeai
+altair
+pandas
