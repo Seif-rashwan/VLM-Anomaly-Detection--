@@ -6,7 +6,7 @@ PRETRAINED_WEIGHTS = "laion2b_s34b_b88k"
 
 # --- Anomaly Detection Parameters ---
 # Threshold: Scores >= 0.7 are flagged as "Anomaly" in the UI
-ANOMALY_THRESHOLD = 0.7 
+ANOMALY_THRESHOLD = 0.6 
 
 # Sigmoid Parameters (Safety & Sensitivity)
 # bias=0.15 shifts the center so "ambiguous" frames get low scores (~0.18)

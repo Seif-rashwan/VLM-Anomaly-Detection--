@@ -5,7 +5,7 @@ import os
 from typing import Dict, List
 from ml_core.vlm_test import get_model
 from ml_core.anomaly_scorer import compute_anomaly_scores, compute_metadata
-from ml_core.video_processor import extract_sampled_frames
+from ml_core.video_processor import extract_sampled_frames, create_patches
 # If you implemented the config step, import it. Otherwise, use defaults.
 try:
     from ml_core.config import ANOMALY_THRESHOLD
@@ -61,6 +61,7 @@ def analyze_video(
         normal_similarities = []
         anomaly_similarities = []
         timestamps = []
+        bounding_boxes = []
         
         print(f"Starting analysis: {os.path.basename(video_path)}")
 
@@ -73,14 +74,37 @@ def analyze_video(
                 image_features = model.encode_image(image_input)
                 image_features /= image_features.norm(dim=-1, keepdim=True)
                 
-                # Calculate Similarity
-                similarity = (image_features @ text_features.T).squeeze(0)
-                similarity_scores = similarity.cpu().numpy()
+            # Calculate Similarity & Softmax Score
+                logits = (image_features @ text_features.T)
+                probs = logits.softmax(dim=-1).cpu().numpy()[0]
+                global_score = float(probs[1]) # Anomaly score
             
-            # Store scores
-            normal_similarities.append(float(similarity_scores[0]))
-            anomaly_similarities.append(float(similarity_scores[1]))
+            # Store raw similarities for smoothing later (legacy support)
+            # Note: We rely on the softmax score for the immediate trigger
+            normal_similarities.append(float(logits[0, 0].item()))
+            anomaly_similarities.append(float(logits[0, 1].item()))
             timestamps.append(timestamp)
+
+            # --- LOCALIZATION LOGIC ---
+            best_box = None
+            if global_score > ANOMALY_THRESHOLD:
+                patch_batch, coords = create_patches(frame_tensor, grid_size=4)
+                patch_batch = patch_batch.to(device)
+                
+                with torch.no_grad():
+                    p_features = model.encode_image(patch_batch)
+                    p_features /= p_features.norm(dim=-1, keepdim=True)
+                    
+                    # Batch similarity
+                    p_logits = (p_features @ text_features.T)
+                    p_probs = p_logits.softmax(dim=-1)[:, 1] # Anomaly column
+                    
+                    # Find winner
+                    best_idx = torch.argmax(p_probs).item()
+                    if p_probs[best_idx] > ANOMALY_THRESHOLD:
+                        best_box = coords[best_idx] # (x, y, w, h)
+            
+            bounding_boxes.append(best_box)
             
             # Optional: Progress logging
             if len(timestamps) % 50 == 0:
@@ -98,8 +122,8 @@ def analyze_video(
         anomaly_scores = compute_anomaly_scores(normal_similarities, anomaly_similarities)
         
         data = [
-            {"time_s": ts, "score": score}
-            for ts, score in zip(timestamps, anomaly_scores)
+            {"time_s": ts, "score": score, "bbox": bbox}
+            for ts, score, bbox in zip(timestamps, anomaly_scores, bounding_boxes)
         ]
         
         metadata = compute_metadata(
