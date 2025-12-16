@@ -73,7 +73,14 @@ def smart_offline_enhancer(text: str) -> str:
 # ---------------------------------------------------------
 # 2. MAIN FUNCTION
 # ---------------------------------------------------------
-MODEL_CANDIDATES = ["gemini-1.5-flash", "gemini-pro"]
+# Use available models (verified with this API key)
+# gemini-2.5-flash is the latest and fastest available
+MODEL_CANDIDATES = [
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-pro-latest",
+    "gemini-1.5-flash-latest",
+]
 
 def get_optimized_prompts(raw_normal: str, raw_anomaly: str) -> Dict[str, str]:
     print("DEBUG: Enhancing prompts...") # Look for this in your terminal!
@@ -88,17 +95,20 @@ def get_optimized_prompts(raw_normal: str, raw_anomaly: str) -> Dict[str, str]:
             "anomaly": smart_offline_enhancer(raw_anomaly)
         }
 
-    # 2. Check API Key
+    # 2. Check API Key - Try Streamlit secrets first, then environment variables
     api_key = None
     try:
         import streamlit as st
         if hasattr(st, "secrets") and "GOOGLE_API_KEY" in st.secrets:
             api_key = st.secrets["GOOGLE_API_KEY"]
-    except:
-        pass
+            print(f"DEBUG: API key loaded from Streamlit secrets")
+    except Exception as e:
+        print(f"DEBUG: Failed to access Streamlit secrets: {e}")
     
     if not api_key:
         api_key = os.getenv("GOOGLE_API_KEY")
+        if api_key:
+            print(f"DEBUG: API key loaded from environment variables")
 
     # If NO KEY, go straight to offline mode
     if not api_key:
@@ -108,24 +118,80 @@ def get_optimized_prompts(raw_normal: str, raw_anomaly: str) -> Dict[str, str]:
             "anomaly": smart_offline_enhancer(raw_anomaly)
         }
 
-    genai.configure(api_key=api_key)
+    try:
+        genai.configure(api_key=api_key)
+        print(f"DEBUG: API key configured successfully")
+    except Exception as e:
+        print(f"DEBUG: Failed to configure API: {e}")
+        return {
+            "normal": smart_offline_enhancer(raw_normal),
+            "anomaly": smart_offline_enhancer(raw_anomaly)
+        }
 
-    # 3. Try to call Google (likely to fail with 429)
-    full_prompt = f"Fix typos and describe for CLIP:\nNormal: '{raw_normal}'\nAnomaly: '{raw_anomaly}'"
+    # 3. Try to call Google Generative AI
+    full_prompt = f"""You are an expert at creating detailed, specific descriptions for image matching in computer vision.
+
+Your task: Take user input and create rich, detailed CLIP prompts that describe scenarios clearly and specifically.
+
+IMPORTANT - Use these examples as reference for the level of detail and specificity required:
+- For falling/accident: "A photo of a person falling down, lying on the ground, or losing balance."
+- For normal movement: "A photo of a person walking normally in an upright posture."
+- For slipping: "A photo of a person slipping and falling to the floor."
+- For running: "A photo of a person running or jogging."
+- For crashes: "A photo of a car crash or heavy vehicle collision."
+- For empty scenes: "A photo of an empty room with furniture but no people visible."
+
+User inputs:
+Normal scenario: '{raw_normal}'
+Anomaly scenario: '{raw_anomaly}'
+
+Create similarly detailed, specific prompts for these scenarios. Each prompt should:
+1. Start with "A photo of" or similar
+2. Include specific details about what's happening
+3. Be 8-15 words long
+4. Be suitable for image/video frame matching
+
+Return ONLY valid JSON with 'normal' and 'anomaly' keys containing the detailed prompts (strings, not lists).
+Example: {{"normal": "A photo of a person walking normally in an upright posture.", "anomaly": "A photo of a person falling down or lying on the ground."}}"""
 
     for model_name in MODEL_CANDIDATES:
         try:
-            model = genai.GenerativeModel(model_name, generation_config={"response_mime_type": "application/json"})
+            print(f"DEBUG: Attempting API call with model: {model_name}")
+            model = genai.GenerativeModel(
+                model_name,
+                generation_config={
+                    "temperature": 0.3,
+                    "top_p": 0.95,
+                    "response_mime_type": "application/json"
+                }
+            )
             response = model.generate_content(full_prompt)
-            result = json.loads(response.text)
-            if "normal" in result:
-                return {"normal": result["normal"], "anomaly": result["anomaly"]}
+            print(f"DEBUG: API response received")
+            
+            if response and response.text:
+                result = json.loads(response.text)
+                if "normal" in result and "anomaly" in result:
+                    print(f"DEBUG: Successfully parsed API response")
+                    # Handle both list and string responses
+                    normal = result["normal"]
+                    anomaly = result["anomaly"]
+                    
+                    # If responses are lists, take the first item
+                    if isinstance(normal, list):
+                        normal = normal[0] if normal else "A photo showing a normal scene."
+                    if isinstance(anomaly, list):
+                        anomaly = anomaly[0] if anomaly else "A photo showing an anomaly."
+                    
+                    return {"normal": normal, "anomaly": anomaly}
+        except json.JSONDecodeError as e:
+            print(f"DEBUG: JSON parsing error for {model_name}: {e}")
+            continue
         except Exception as e:
-            # print(f"DEBUG: API failed ({e})") 
+            print(f"DEBUG: API call failed for {model_name}: {str(e)[:100]}")
             continue
 
     # 4. FINAL FALLBACK (The Safety Net)
-    print("⚠️ API Failed (Quota/Error). Using Smart Offline Enhancer.")
+    print("DEBUG: API failed, using offline prompt enhancer")
     return {
         "normal": smart_offline_enhancer(raw_normal),
         "anomaly": smart_offline_enhancer(raw_anomaly)
