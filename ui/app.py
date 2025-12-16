@@ -51,14 +51,19 @@ def handle_enhance_click():
 
     try:
         from ml_core.prompt_engineering import get_optimized_prompts
-        enhanced = get_optimized_prompts(current_normal, current_anomaly)
+        
+        # Show status while enhancing
+        with st.spinner("🔄 Enhancing prompts..."):
+            enhanced = get_optimized_prompts(current_normal, current_anomaly)
         
         st.session_state.input_normal_prompt = enhanced["normal"]
         st.session_state.input_anomaly_prompt = enhanced["anomaly"]
         st.session_state["show_enhance_success"] = True
+        st.session_state["enhance_error"] = None
         
     except Exception as e:
-        st.session_state["enhance_error"] = str(e)
+        st.session_state["enhance_error"] = f"Enhancement failed: {str(e)}"
+        st.session_state["show_enhance_success"] = False
 
 # --- CORE FUNCTIONS ---
 

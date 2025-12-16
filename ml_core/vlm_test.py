@@ -4,7 +4,20 @@ from PIL import Image
 import os
 import numpy as np
 from typing import Union, Dict
+import warnings
+import sys
+from io import StringIO
 from ml_core.config import MODEL_NAME, PRETRAINED_WEIGHTS
+
+# Suppress PyTorch torch.classes warning (harmless but noisy)
+# Do this at module level to catch all instances
+warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*torch.classes.*")
+
+# Suppress at stderr level too
+old_stderr = sys.stderr
+sys.stderr = StringIO()
 
 # Global model cache
 _model_cache = None
@@ -18,11 +31,18 @@ def get_model():
     
     if _model_cache is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        model, _, preprocess = open_clip.create_model_and_transforms(
-            MODEL_NAME, 
-            pretrained=PRETRAINED_WEIGHTS, 
-            device=device
-        )
+        try:
+            # Suppress all warnings during model loading
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                model, _, preprocess = open_clip.create_model_and_transforms(
+                    MODEL_NAME, 
+                    pretrained=PRETRAINED_WEIGHTS, 
+                    device=device
+                )
+        finally:
+            # Restore stderr
+            sys.stderr = old_stderr
         model.eval() # Ensure eval mode is set immediately
         tokenizer = open_clip.get_tokenizer(MODEL_NAME)
         
