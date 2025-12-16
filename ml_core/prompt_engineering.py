@@ -119,6 +119,7 @@ def get_optimized_prompts(raw_normal: str, raw_anomaly: str) -> Dict[str, str]:
         }
 
     try:
+        import streamlit as st
         genai.configure(api_key=api_key)
         print(f"DEBUG: API key configured successfully")
     except Exception as e:
@@ -188,6 +189,10 @@ Example: {{"normal": "A photo of a person walking normally in an upright posture
             continue
         except Exception as e:
             print(f"DEBUG: API call failed for {model_name}: {str(e)[:100]}")
+            try:
+                import streamlit as st
+                st.warning(f"⚠️ Model {model_name} failed: {e}")
+            except: pass
             continue
 
     # 4. FINAL FALLBACK (The Safety Net)

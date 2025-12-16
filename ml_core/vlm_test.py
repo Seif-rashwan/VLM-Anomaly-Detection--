@@ -25,33 +25,53 @@ _tokenizer_cache = None
 _preprocess_cache = None
 _device_cache = None
 
-def get_model():
-    """Load and cache the model to avoid reloading on each call."""
+def get_model(model_name: str = None):
+    """Load and cache either a local VLM (CLIP) or Gemini API model."""
     global _model_cache, _tokenizer_cache, _preprocess_cache, _device_cache
-    
+
+    # -----------------------------
+    # Gemini API branch
+    # -----------------------------
+    if model_name and model_name.startswith("gemini"):
+        import google.generativeai as genai
+
+        if _model_cache is None:
+            genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+            model = genai.GenerativeModel(model_name)
+
+            _model_cache = model
+            _tokenizer_cache = None
+            _preprocess_cache = None
+            _device_cache = "cloud-gemini"
+
+        return _model_cache, None, None, _device_cache
+
+    # -----------------------------
+    # Local CLIP branch (default)
+    # -----------------------------
     if _model_cache is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         try:
-            # Suppress all warnings during model loading
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 model, _, preprocess = open_clip.create_model_and_transforms(
-                    MODEL_NAME, 
-                    pretrained=PRETRAINED_WEIGHTS, 
+                    MODEL_NAME,
+                    pretrained=PRETRAINED_WEIGHTS,
                     device=device
                 )
         finally:
-            # Restore stderr
             sys.stderr = old_stderr
-        model.eval() # Ensure eval mode is set immediately
+
+        model.eval()
         tokenizer = open_clip.get_tokenizer(MODEL_NAME)
-        
+
         _model_cache = model
         _tokenizer_cache = tokenizer
         _preprocess_cache = preprocess
         _device_cache = device
-    
+
     return _model_cache, _tokenizer_cache, _preprocess_cache, _device_cache
+
 
 def analyze_image_vlm(
     image: Union[str, Image.Image], 
