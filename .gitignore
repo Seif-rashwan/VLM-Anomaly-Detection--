@@ -207,4 +207,4 @@ marimo/_lsp/
 __marimo__/
 
 # Streamlit secrets (contains API keys and sensitive information)
-.streamlit/secrets.toml
+.streamlit/secrets.tomlml_core/.env
