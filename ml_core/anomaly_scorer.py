@@ -5,30 +5,17 @@ from ml_core.config import DEFAULT_SIGMOID_BIAS, DEFAULT_SIGMOID_TEMP, ANOMALY_T
 def compute_anomaly_scores(
     normal_similarities: List[float],
     anomaly_similarities: List[float],
-    temperature: float = DEFAULT_SIGMOID_TEMP,
-    bias: float = DEFAULT_SIGMOID_BIAS
+    temperature: float = None, # Deprecated
+    bias: float = None         # Deprecated
 ) -> List[float]:
     """
-    Computes anomaly scores using a biased sigmoid function.
+    Returns the anomaly probabilities directly.
     
-    Includes safety clipping and configurable sensitivity.
+    Previous versions used a sigmoid on logits. 
+    Now that we use Softmax probabilities [0, 1], we just return them.
     """
-    normal_sims = np.array(normal_similarities)
-    anomaly_sims = np.array(anomaly_similarities)
-    
-    # 1. Calculate raw difference
-    raw_scores = anomaly_sims - normal_sims
-    
-    # 2. SAFETY: Clip extreme values to prevent overflow/underflow
-    # CLIP similarity is usually within [-1, 1], so differences are [-2, 2].
-    # We clip to [-2.0, 2.0] just to be safe mathematically.
-    raw_scores = np.clip(raw_scores, -2.0, 2.0)
-    
-    # 3. Apply Biased Sigmoid
-    # Formula: 1 / (1 + e^(-(x - bias) / temp))
-    normalized_scores = 1 / (1 + np.exp(-(raw_scores - bias) / temperature))
-    
-    return normalized_scores.tolist()
+    # Simply return the anomaly probability (presumed to be in 0.0-1.0 range)
+    return list(anomaly_similarities)
 
 def compute_metadata(
     anomaly_scores: List[float],

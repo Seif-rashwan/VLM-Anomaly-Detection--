@@ -6,11 +6,16 @@ from typing import Dict, List
 from ml_core.vlm_test import get_model
 from ml_core.anomaly_scorer import compute_anomaly_scores, compute_metadata
 from ml_core.video_processor import extract_sampled_frames, create_patches
-# If you implemented the config step, import it. Otherwise, use defaults.
 try:
-    from ml_core.config import ANOMALY_THRESHOLD
+    from ml_core.config import (
+        ANOMALY_THRESHOLD, 
+        DEFAULT_SIGMOID_BIAS, 
+        DEFAULT_SIGMOID_TEMP
+    )
 except ImportError:
-    ANOMALY_THRESHOLD = 0.7
+    ANOMALY_THRESHOLD = 0.6
+    DEFAULT_SIGMOID_BIAS = 0.05
+    DEFAULT_SIGMOID_TEMP = 0.1
 
 def analyze_video(
     video_path: str,
@@ -20,9 +25,6 @@ def analyze_video(
 ) -> Dict:
     """
     Analyzes a video using VLM to detect anomalies frame-by-frame.
-    
-    PHASE 3 FIX: Removed duplicate video loop. Now uses the
-    'extract_sampled_frames' generator from video_processor.py.
     """
     try:
         # Validate video file
@@ -34,8 +36,7 @@ def analyze_video(
                 "metadata": {}
             }
         
-        # 1. Get Video Metadata (Quick Open/Close)
-        # We perform a quick check to get total duration for the report.
+        # 1. Get Video Metadata
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
              return {"status": "Error", "error_message": "Invalid video file", "data": [], "metadata": {}}
@@ -45,9 +46,9 @@ def analyze_video(
         total_seconds = total_frames / fps if fps > 0 else 0
         cap.release()
 
-        # 2. Load Model & Prepare Text Embeddings
+        # 2. Load Model
         model, tokenizer, preprocess, device = get_model()
-        model.eval() # Ensure evaluation mode
+        model.eval()
         
         prompts = [prompt_normal, prompt_anomaly]
         text_input = tokenizer(prompts).to(device)
@@ -56,8 +57,7 @@ def analyze_video(
             text_features = model.encode_text(text_input)
             text_features /= text_features.norm(dim=-1, keepdim=True)
         
-        # 3. Process Frames (DE-DUPLICATED LOOP)
-        # We now iterate over the generator. Logic is defined in ONE place (video_processor).
+        # 3. Process Frames
         normal_similarities = []
         anomaly_similarities = []
         timestamps = []
@@ -67,26 +67,30 @@ def analyze_video(
 
         for frame_tensor, timestamp in extract_sampled_frames(video_path, sampling_rate_fps):
             
-            # Prepare Input: Add batch dimension (3, H, W) -> (1, 3, H, W)
             image_input = frame_tensor.unsqueeze(0).to(device)
             
             with torch.no_grad():
                 image_features = model.encode_image(image_input)
                 image_features /= image_features.norm(dim=-1, keepdim=True)
                 
-            # Calculate Similarity & Softmax Score
-                logits = (image_features @ text_features.T)
+                # 1. Calculate Scaled Logits
+                # Multiply by 100.0 to scale cosine similarity for Softmax
+                logits = (image_features @ text_features.T) * 100.0
+                
+                # 2. Compute Softmax Probabilities (Standardized Scoring)
                 probs = logits.softmax(dim=-1).cpu().numpy()[0]
-                global_score = float(probs[1]) # Anomaly score
-            
-            # Store raw similarities for smoothing later (legacy support)
-            # Note: We rely on the softmax score for the immediate trigger
-            normal_similarities.append(float(logits[0, 0].item()))
-            anomaly_similarities.append(float(logits[0, 1].item()))
+                prob_normal = float(probs[0])
+                prob_anomaly = float(probs[1])
+                
+                global_score = prob_anomaly
+                
+            normal_similarities.append(prob_normal)
+            anomaly_similarities.append(prob_anomaly)
             timestamps.append(timestamp)
 
             # --- LOCALIZATION LOGIC ---
             best_box = None
+            
             if global_score > ANOMALY_THRESHOLD:
                 patch_batch, coords = create_patches(frame_tensor, grid_size=4)
                 patch_batch = patch_batch.to(device)
@@ -95,22 +99,20 @@ def analyze_video(
                     p_features = model.encode_image(patch_batch)
                     p_features /= p_features.norm(dim=-1, keepdim=True)
                     
-                    # Batch similarity
-                    p_logits = (p_features @ text_features.T)
-                    p_probs = p_logits.softmax(dim=-1)[:, 1] # Anomaly column
+                    # Scale patch logits too!
+                    p_logits = (p_features @ text_features.T) * 100.0
+                    p_probs = p_logits.softmax(dim=-1)[:, 1] 
                     
-                    # Find winner
                     best_idx = torch.argmax(p_probs).item()
+                    
                     if p_probs[best_idx] > ANOMALY_THRESHOLD:
-                        best_box = coords[best_idx] # (x, y, w, h)
+                        best_box = coords[best_idx]
             
             bounding_boxes.append(best_box)
             
-            # Optional: Progress logging
             if len(timestamps) % 50 == 0:
                 print(f"Processed {len(timestamps)} frames...")
 
-        # Edge Case: No frames processed (e.g., all black frames)
         if not timestamps:
              return {
                 "status": "Success",
@@ -118,7 +120,7 @@ def analyze_video(
                 "metadata": compute_metadata([], [], total_frames, total_seconds)
             }
 
-        # 4. Compute Final Scores & Metadata
+        # 4. Compute Final Scores
         anomaly_scores = compute_anomaly_scores(normal_similarities, anomaly_similarities)
         
         data = [

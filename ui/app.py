@@ -12,6 +12,7 @@ import pandas as pd
 import streamlit as st
 from PIL import Image
 import torch
+import numpy as np
 
 # Add parent directory to path to import ml_core
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -51,12 +52,12 @@ def guard_audio_prompts(prompt_normal: str, prompt_anomaly: str) -> bool:
     if prompt_mentions_audio(prompt_anomaly): flagged.append("Anomaly Prompt")
     
     if flagged:
-        st.error(
+        st.warning(
             f"⚠️ Visual Warning: The {', '.join(flagged)} contains audio-specific terms. "
-            "Since this model only 'sees' video frames, try describing the *visual* action instead "
+            "The model only sees video frames, so try describing visual actions "
             "(e.g., use 'person yelling' instead of 'loud noise')."
         )
-        return True
+        return False # Warn but allow user to proceed (Fixed from Error)
     return False
 
 # --- CALLBACK FOR ENHANCE BUTTON ---
@@ -87,31 +88,47 @@ def get_analyze_video_function():
     from ml_core.video_analyzer import analyze_video
     return analyze_video
 
-# --- THREADED CAMERA CLASS (Async Producer) ---
+# --- CACHED RESOURCE LOADER (Architecture Fix) ---
+@st.cache_resource
+def load_model_resource():
+    from ml_core.vlm_test import get_model
+    return get_model()
+
+# --- THREADED CAMERA CLASS ---
 class ThreadedCamera:
     def __init__(self, src=0):
+        print(f"DEBUG: Initializing ThreadedCamera with src={src}")
+        # Improved backend selection
         if os.name == 'nt':
+            print("DEBUG: Using cv2.CAP_DSHOW backend")
             self.capture = cv2.VideoCapture(src, cv2.CAP_DSHOW)
         else:
             self.capture = cv2.VideoCapture(src)
+            
         self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         self.q = queue.Queue(maxsize=1)
         self.is_running = False
         self.thread = None
-        self.last_frame_time = 0.0  # FIX 5: Track frame age
+        self.last_frame_time = 0.0
         
         if self.capture.isOpened():
+            print("DEBUG: Camera opened successfully")
             self.is_running = True
             self.thread = threading.Thread(target=self._update, daemon=True)
             self.thread.start()
+        else:
+            print(f"ERROR: Could not open camera source {src}")
 
     def _update(self):
+        print("DEBUG: Camera thread started")
         while self.is_running:
             ret, frame = self.capture.read()
             if not ret:
+                print("DEBUG: Camera read failed (ret=False)")
                 self.is_running = False
                 break
-            # FIX 5: Timestamp the frame at capture time
+            
+            # Timestamp capture immediately
             self.last_frame_time = time.time()
             
             if not self.q.empty():
@@ -123,11 +140,13 @@ class ThreadedCamera:
                 self.q.put(frame, timeout=0.01)
             except queue.Full:
                 pass
+        print("DEBUG: Camera thread stopped")
 
     def read(self):
         try:
             return True, self.q.get(timeout=0.1) 
         except queue.Empty:
+            # print("DEBUG: Camera queue empty") # Too noisy
             return False, None
 
     def isOpened(self):
@@ -147,7 +166,11 @@ def init_stream_state():
         st.session_state.stream_active = False
     if "stream_cap" not in st.session_state:
         st.session_state.stream_cap = None
-        
+    
+    # Track the last REAL score to prevent phantom values
+    if "last_real_scores" not in st.session_state:
+        st.session_state.last_real_scores = [0.9, 0.1] # Default to Clean Normal
+
     if "data_buffers" not in st.session_state:
         st.session_state.data_buffers = {
             "normal": deque(maxlen=ROLLING_WINDOW_SIZE),
@@ -156,7 +179,7 @@ def init_stream_state():
             "start_time": 0.0,
             "last_process_time": 0.0,
             "last_inference_time": 0.0,
-            "last_localization_time": 0.0  # FIX 4: Throttle localization
+            "last_localization_time": 0.0
         }
 
     if "prev_frame" not in st.session_state:
@@ -164,10 +187,6 @@ def init_stream_state():
 
     if "live_cache" not in st.session_state:
         st.session_state.live_cache = {
-            "model": None,
-            "preprocess": None,
-            "device": None,
-            "tokenizer": None,
             "text_features": None,
             "last_prompts": (None, None)
         }
@@ -189,6 +208,8 @@ def start_camera(camera_index):
     st.session_state.stream_cap = cap
     st.session_state.stream_active = True
     
+    # Reset State on Start
+    st.session_state.last_real_scores = [0.9, 0.1] # Clean start
     st.session_state.data_buffers = {
         "normal": deque(maxlen=ROLLING_WINDOW_SIZE),
         "anomaly": deque(maxlen=ROLLING_WINDOW_SIZE),
@@ -214,27 +235,23 @@ def stream_widget(prompt_normal, prompt_anomaly, sampling_rate_fps):
     ret, frame = cap.read()
     
     if not ret:
-        st.error("⚠️ Lost connection to camera.")
-        stop_camera()
-        st.rerun()
+        # Graceful handling of temporary read errors
         return
 
-    # FIX 5: Freshness Check
-    # If the frame is stale (>0.5s old), drop it to prevent ghosting
+    # Freshness Check: Drop old frames to prevent lag
     frame_age = time.time() - cap.last_frame_time
     if frame_age > 0.5:
         return
 
-    # --- 1. MOTION DETECTION (CV2) ---
+    # --- 1. MOTION DETECTION ---
     prev_frame = st.session_state.get("prev_frame", None)
     motion_found, contours, current_processed_frame = detect_motion(frame, prev_frame)
     st.session_state.prev_frame = current_processed_frame
 
-    # Create Clean Frame for CLIP & Display Frame for UI
+    # Display Preparation
     clean_rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     display_frame = clean_rgb_frame.copy() 
 
-    # Draw Motion Highlights (Red Boxes)
     if motion_found:
         for c in contours:
             (x, y, w, h) = cv2.boundingRect(c)
@@ -253,8 +270,7 @@ def stream_widget(prompt_normal, prompt_anomaly, sampling_rate_fps):
     if now - last_process_time >= min_interval:
         st.session_state.data_buffers["last_process_time"] = now
         
-        # FIX 2: Priority Logic
-        # Run if Motion is detected OR (No Motion AND Heartbeat interval exceeded)
+        # Priority Logic: Run if Motion OR Heartbeat
         should_run_clip = motion_found or (
             not motion_found and (now - last_inference_time >= FORCED_INFERENCE_INTERVAL)
         )
@@ -262,82 +278,82 @@ def stream_widget(prompt_normal, prompt_anomaly, sampling_rate_fps):
         if should_run_clip:
             st.session_state.data_buffers["last_inference_time"] = now
             
+            # --- MODEL LOADING (Optimized) ---
+            model, tokenizer, preprocess, device = load_model_resource()
+            
+            # --- TEXT EMBEDDING CACHING ---
             cache = st.session_state.live_cache
             current_prompts = (prompt_normal, prompt_anomaly)
             
-            # Load resources if needed
-            if cache["model"] is None or cache["last_prompts"] != current_prompts:
-                if cache["model"] is None:
-                    from ml_core.vlm_test import get_model
-                    model, tokenizer, preprocess, device = get_model()
-                    model.eval()
-                    cache["model"] = model
-                    cache["tokenizer"] = tokenizer
-                    cache["preprocess"] = preprocess
-                    cache["device"] = device
-                
-                if cache["last_prompts"] != current_prompts:
-                    tokenizer = cache["tokenizer"]
-                    model = cache["model"]
-                    device = cache["device"]
-                    text_input = tokenizer([prompt_normal, prompt_anomaly]).to(device)
-                    with torch.no_grad():
-                        text_features = model.encode_text(text_input)
-                        text_features /= text_features.norm(dim=-1, keepdim=True)
-                    cache["text_features"] = text_features
-                    cache["last_prompts"] = current_prompts
+            if cache["last_prompts"] != current_prompts:
+                text_input = tokenizer([prompt_normal, prompt_anomaly]).to(device)
+                with torch.no_grad():
+                    text_features = model.encode_text(text_input)
+                    text_features /= text_features.norm(dim=-1, keepdim=True)
+                cache["text_features"] = text_features
+                cache["last_prompts"] = current_prompts
             
-            model = cache["model"]
-            preprocess = cache["preprocess"]
-            device = cache["device"]
             text_features = cache["text_features"]
 
-            # Run Inference on CLEAN FRAME
+            # --- INFERENCE ---
             if not is_frame_valid(clean_rgb_frame):
-                scores = [0.9, 0.1] # FIX 3: Soft Normal for invalid frames
+                # Invalid frame (black/dark)
+                scores = [0.9, 0.1]
             else:
                 pil_image = Image.fromarray(clean_rgb_frame)
                 image_input = preprocess(pil_image).unsqueeze(0).to(device)
+                
                 with torch.no_grad():
                     image_features = model.encode_image(image_input)
                     image_features /= image_features.norm(dim=-1, keepdim=True)
                     
-                    logits = (image_features @ text_features.T)
+                    # MATH FIX: Use Scaling for Contrast
+                    logits = (image_features @ text_features.T) * 100.0
                     
-                    # FIX 1: Use Probabilities, not Logits
+                    # MATH FIX: Use Probabilities for UI/Logic
                     probs = logits.softmax(dim=-1)[0]
                     scores = probs.detach().cpu().numpy() # [Normal_Prob, Anomaly_Prob]
                     global_prob = float(scores[1])
+                    
+                    # Store as LAST REAL SCORE for fallback
+                    st.session_state.last_real_scores = scores
 
-                    # FIX 4: Throttled Anomaly Localization
+                    # --- LOCALIZATION ---
                     last_loc_time = st.session_state.data_buffers.get("last_localization_time", 0.0)
                     
                     if global_prob > ANOMALY_THRESHOLD and (now - last_loc_time > LOCALIZATION_COOLDOWN):
-                        # Update timestamp
                         st.session_state.data_buffers["last_localization_time"] = now
                         
-                        patch_batch, coords = create_patches(torch.from_numpy(clean_rgb_frame).permute(2, 0, 1), grid_size=4)
-                        patch_batch = patch_batch.to(device)
-                        
-                        p_features = model.encode_image(patch_batch)
-                        p_features /= p_features.norm(dim=-1, keepdim=True)
-                        
-                        p_probs = (p_features @ text_features.T).softmax(dim=-1)[:, 1]
-                        best_idx = torch.argmax(p_probs).item()
-                        
-                        if p_probs[best_idx] > ANOMALY_THRESHOLD:
-                            st.session_state.current_bbox = coords[best_idx]
-                        else:
+                        try:
+                            # 2x2 Grid for speed
+                            patch_batch, coords = create_patches(
+                                torch.from_numpy(clean_rgb_frame).permute(2, 0, 1), 
+                                grid_size=2 
+                            )
+                            patch_batch = patch_batch.to(device)
+                            
+                            p_features = model.encode_image(patch_batch)
+                            p_features /= p_features.norm(dim=-1, keepdim=True)
+                            
+                            p_logits = (p_features @ text_features.T) * 100.0
+                            p_probs = p_logits.softmax(dim=-1)[:, 1]
+                            best_idx = torch.argmax(p_probs).item()
+                            
+                            if p_probs[best_idx] > ANOMALY_THRESHOLD:
+                                st.session_state.current_bbox = coords[best_idx]
+                            else:
+                                st.session_state.current_bbox = None
+                        except Exception as e:
                             st.session_state.current_bbox = None
-                    
-                    # If global probability drops, clear the box immediately
+                            
                     elif global_prob <= ANOMALY_THRESHOLD:
                          st.session_state.current_bbox = None
 
         else:
-            # FIX 3: Soft Normal Assumption
-            # If we skip CLIP, we assume the scene is mostly normal, but allow small uncertainty
-            scores = [0.9, 0.1] 
+            # FALLBACK: No Motion = Perfect Safety
+            # This ensures the graph stays at 0.0 when nothing is happening,
+            # matching the behavior of your "Normal" detection.
+            scores = [1.0, 0.0] 
             st.session_state.current_bbox = None
 
         buffers = st.session_state.data_buffers
@@ -345,21 +361,26 @@ def stream_widget(prompt_normal, prompt_anomaly, sampling_rate_fps):
         buffers["anomaly"].append(float(scores[1]))
         buffers["timestamps"].append(now - buffers["start_time"])
 
-    # Draw Anomaly Box (Blue)
+    # Draw Anomaly Box
     if st.session_state.get("current_bbox"):
         x, y, w, h = st.session_state.current_bbox
         cv2.rectangle(display_frame, (x, y), (x+w, y+h), (0, 0, 255), 3) 
         cv2.putText(display_frame, "ANOMALY", (x, y-10), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
 
-    # Render Display
     with col_camera:
         st.image(display_frame, channels="RGB", width="stretch")
 
+    # Update Chart
     buffers = st.session_state.data_buffers
     if len(buffers["normal"]) > 1:
-        from ml_core.anomaly_scorer import compute_anomaly_scores
-        rolling_scores = compute_anomaly_scores(list(buffers["normal"]), list(buffers["anomaly"]))
+        # Use simple probability difference for robustness
+        # This replaces the complex sigmoid that was causing issues
+        normal_arr = np.array(buffers["normal"])
+        anomaly_arr = np.array(buffers["anomaly"])
+        
+        # Simple Logic: Anomaly Probability (0.0 to 1.0)
+        rolling_scores = anomaly_arr 
         
         df = pd.DataFrame({
             "time_s": list(buffers["timestamps"]),
@@ -393,7 +414,7 @@ def render_video_upload_mode(uploaded_file, prompt_normal, prompt_anomaly, sampl
     
     if not start_requested: return
     if not uploaded_file: st.error("⚠️ Upload a video first."); return
-    if guard_audio_prompts(prompt_normal, prompt_anomaly): return
+    guard_audio_prompts(prompt_normal, prompt_anomaly) # Just warn
 
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -460,14 +481,12 @@ def main():
         if mode == "Video File Upload":
             st.header("Upload")
             uploaded_file = st.file_uploader("Choose Video", type=["mp4", "mov", "avi"])
-            # REFACTORED: Use constant from config
             rate = st.slider("Sampling Rate", 0.5, 5.0, DEFAULT_SAMPLING_RATE)
             start_btn = st.button("🚨 Start Analysis", type="primary")
         else:
             uploaded_file = None
             st.header("Live Stream")
             camera_idx = st.number_input("Camera Index", min_value=0, max_value=5, value=0, step=1)
-            # REFACTORED: Use constant from config
             rate = st.slider("Sampling Rate", 0.5, 5.0, DEFAULT_SAMPLING_RATE, key="live_rate")
             
             col1, col2 = st.columns(2)

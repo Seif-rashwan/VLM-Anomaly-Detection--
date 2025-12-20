@@ -7,19 +7,12 @@ from typing import Iterator, Tuple, List, Optional
 # Import from central config
 from ml_core.config import MODEL_NAME, PRETRAINED_WEIGHTS
 
-# --- Utility to load VLM preprocessor only once ---
-_PREPROCESS = None 
+from ml_core.vlm_test import get_model
 
 def get_vlm_preprocessor():
-    """Loads the VLM image preprocessor only once for efficiency."""
-    global _PREPROCESS
-    if _PREPROCESS is None:
-        # Load only the preprocessor, not the full model (saves VRAM)
-        _, _, _PREPROCESS = open_clip.create_model_and_transforms(
-            MODEL_NAME, 
-            pretrained=PRETRAINED_WEIGHTS
-        )
-    return _PREPROCESS
+    """Returns the cached VLM image preprocessor."""
+    _, _, preprocess, _ = get_model()
+    return preprocess
 
 def extract_sampled_frames(
     video_path: str, 
