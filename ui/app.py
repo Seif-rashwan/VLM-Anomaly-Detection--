@@ -190,6 +190,9 @@ def init_stream_state():
             "text_features": None,
             "last_prompts": (None, None)
         }
+    
+    if "camera_invalid" not in st.session_state:
+        st.session_state.camera_invalid = False
 
 def release_camera_safely():
     if "stream_cap" in st.session_state and st.session_state.stream_cap is not None:
@@ -297,9 +300,13 @@ def stream_widget(prompt_normal, prompt_anomaly, sampling_rate_fps):
 
             # --- INFERENCE ---
             if not is_frame_valid(clean_rgb_frame):
-                # Invalid frame (black/dark)
-                scores = [0.9, 0.1]
+                # Invalid frame (black/dark/disabled camera) - Skip scoring
+                # Don't add invalid scores to buffers to prevent random fluctuations
+                st.session_state.camera_invalid = True
+                return  # Skip this frame entirely
             else:
+                # Valid frame - clear invalid flag
+                st.session_state.camera_invalid = False
                 pil_image = Image.fromarray(clean_rgb_frame)
                 image_input = preprocess(pil_image).unsqueeze(0).to(device)
                 
@@ -371,9 +378,21 @@ def stream_widget(prompt_normal, prompt_anomaly, sampling_rate_fps):
     with col_camera:
         st.image(display_frame, channels="RGB", width="stretch")
 
-    # Update Chart
+    # Check if camera is invalid/disabled
     buffers = st.session_state.data_buffers
-    if len(buffers["normal"]) > 1:
+    if st.session_state.get("camera_invalid", False):
+        with col_results:
+            st.subheader("📊 Live Analysis")
+            st.warning("⚠️ **Camera Disabled or No Signal**")
+            st.info("Please check your camera connection. Anomaly detection is paused until a valid video feed is detected.")
+            # Show last valid scores if available, otherwise show empty state
+            if len(buffers["normal"]) > 0:
+                last_time = buffers["timestamps"][-1] if buffers["timestamps"] else 0
+                st.caption(f"Last valid reading: {last_time:.1f}s ago")
+        return
+    
+    # Update Chart (buffers already defined above)
+    if len(buffers["normal"]) > 0:
         # Use simple probability difference for robustness
         # This replaces the complex sigmoid that was causing issues
         normal_arr = np.array(buffers["normal"])

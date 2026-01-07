@@ -57,12 +57,35 @@ def extract_sampled_frames(
         
     cap.release()
 
-def is_frame_valid(frame: np.ndarray, threshold: int = 10) -> bool:
-    """Checks if a frame is valid (not just a black screen)."""
-    if frame is None:
+def is_frame_valid(frame: np.ndarray, threshold: int = 15) -> bool:
+    """
+    Checks if a frame is valid (not just a black screen or disabled camera).
+    
+    Args:
+        frame: Input frame (BGR or RGB)
+        threshold: Minimum average intensity (0-255). Default 15 to catch very dark frames.
+    
+    Returns:
+        True if frame appears to have valid content, False if black/disabled.
+    """
+    if frame is None or frame.size == 0:
         return False
-    avg_intensity = np.mean(frame)
-    return avg_intensity > threshold
+    
+    # Convert to grayscale if needed
+    if len(frame.shape) == 3:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.shape[2] == 3 else frame[:,:,0]
+    else:
+        gray = frame
+    
+    # Check average intensity
+    avg_intensity = np.mean(gray)
+    
+    # Check standard deviation (black frames have very low std)
+    std_intensity = np.std(gray)
+    
+    # Frame is valid if it has reasonable brightness AND variation
+    # This catches both pure black frames and very dark/static frames
+    return avg_intensity > threshold and std_intensity > 5
 
 import torch.nn.functional as F
 
